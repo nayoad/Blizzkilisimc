@@ -108,7 +108,7 @@ end
 
 --Action bar changed event handler
 function Blizzkili:ActionbarChanged(_, slot)
-    local type, id, subtype = GetActionInfo(slot)
+    local type, id, subtype = BlizzardAPI._GetActionInfo(slot)
     -- if it's the single button assistant, if it is, ignore, it fires too frequently
     if subtype == "assistedcombat" then return end
     info("Action bar changed, rescaning action bars")
