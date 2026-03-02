@@ -200,7 +200,7 @@ function Blizzkili:SimCDebug()
     -- Determine spec key
     local specIndex = GetSpecialization()
     local specName = specIndex and select(2, GetSpecializationInfo(specIndex))
-    local _, _, classToken = UnitClass("player")
+    local _, classToken = UnitClass("player")
     local specKey = (classToken and specName) and (classToken .. "_" .. specName) or "Unknown"
     DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "Spec key: " .. specKey)
 

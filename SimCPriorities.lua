@@ -538,7 +538,7 @@ SimCPriorities.data = {
 }
 
 -- Returns the priority list for a given class/spec combination.
--- classToken: UnitClass() third return value, e.g. "DEATHKNIGHT"
+-- classToken: UnitClass() second return value, e.g. "DEATHKNIGHT"
 -- specName:   GetSpecializationInfo() second return value, e.g. "Blood"
 function SimCPriorities.GetPriority(classToken, specName)
     if not classToken or not specName then return nil end
@@ -553,7 +553,7 @@ function SimCPriorities.GetCurrentPriority()
     if not specIndex then return nil end
     local _, specName = GetSpecializationInfo(specIndex)
     if not specName then return nil end
-    local _, _, classToken = UnitClass("player")
+    local _, classToken = UnitClass("player")
     if not classToken then return nil end
     return SimCPriorities.GetPriority(classToken, specName)
 end
