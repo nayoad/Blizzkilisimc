@@ -38,19 +38,32 @@ end
 
 function Rotation.GetRotation()
     local fullRotation = BlizzardAPI.GetAssistedCombatRotation()
-    -- Filter blacklisted spells; always keep index 1 (Blizzard's top suggestion as anchor).
-    local filtered = {}
-    for i, spellId in ipairs(fullRotation) do
-        if i == 1 or not SpellBlacklist.isBlacklisted(spellId) then
-            table.insert(filtered, spellId)
+    if #fullRotation == 0 then return fullRotation end
+
+    -- Index 1 is GetNextCastSpell() — Blizzard's live "cast this now" recommendation.
+    -- It must stay pinned at position 1 so the display always reflects the current suggestion.
+    -- Intentionally not blacklist-checked: if Blizzard says cast it now, we show it regardless.
+    local nextSpell = fullRotation[1]
+
+    -- Build the remaining pool (indices 2+), filtering out blacklisted spells.
+    local pool = {}
+    for i = 2, #fullRotation do
+        if not SpellBlacklist.isBlacklisted(fullRotation[i]) then
+            table.insert(pool, fullRotation[i])
         end
     end
-    -- Re-sort by SimC priority when data is available for the current spec.
+
+    -- Re-sort the pool by SimC priority when data is available for the current spec.
     local priorityList = SimCPriorities.GetCurrentPriority()
     if priorityList and #priorityList > 0 then
         local priorityMap = BuildPriorityMap(priorityList)
-        return SortBySimC(filtered, priorityMap)
+        pool = SortBySimC(pool, priorityMap)
     end
-    -- Fallback: no SimC data for this spec — return Blizzard order unchanged.
-    return filtered
+
+    -- Assemble result: nextSpell pinned first, SimC-sorted pool after.
+    local result = { nextSpell }
+    for _, id in ipairs(pool) do
+        table.insert(result, id)
+    end
+    return result
 end
