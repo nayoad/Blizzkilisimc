@@ -1,15 +1,37 @@
 local addonName, addon = ...
-local BlizzardAPI = LibStub:NewLibrary("Blizzkili-BlizzardAPI", 1)
+local BlizzardAPI = LibStub:NewLibrary("Blizzkili-BlizzardAPI", 2)
 local Debug = LibStub("Blizzkili-Debug")
 local Blizzkili = LibStub("AceAddon-3.0"):GetAddon("Blizzkili", true)
 local error = function(msg) Debug.Error(Blizzkili.db.profile, msg) end
+
+-- ---------------------------------------------------------------------------
+-- API compatibility wrappers (11.2.5 → 12.0.x)
+-- ---------------------------------------------------------------------------
+
+-- HasAction moved to C_ActionBar.HasAction in 12.0.0; fall back to global.
+function BlizzardAPI._HasAction(slot)
+    if C_ActionBar and C_ActionBar.HasAction then
+        return C_ActionBar.HasAction(slot)
+    end
+    return HasAction(slot)
+end
+
+-- GetActionInfo moved to C_ActionBar.GetActionInfo in 12.0.0; fall back to global.
+function BlizzardAPI._GetActionInfo(slot)
+    if C_ActionBar and C_ActionBar.GetActionInfo then
+        return C_ActionBar.GetActionInfo(slot)
+    end
+    return GetActionInfo(slot)
+end
+
 function BlizzardAPI.GetAssistedCombatRotation()
   local rotation = {}
   local index = 1
-  if C_AssistedCombat and C_AssistedCombat.IsAvailable() then
+  local ok, available = pcall(function() return C_AssistedCombat and C_AssistedCombat.IsAvailable() end)
+  if ok and available then
     -- Get the next cast spell (what's coming next)
-    local nextCastSpell = C_AssistedCombat.GetNextCastSpell()
-    if nextCastSpell then
+    local nextOk, nextCastSpell = pcall(function() return C_AssistedCombat.GetNextCastSpell() end)
+    if nextOk and nextCastSpell then
       rotation[index] = nextCastSpell
       index = index + 1
     else
@@ -17,8 +39,8 @@ function BlizzardAPI.GetAssistedCombatRotation()
     end
 
     -- Get rotation spells for reference
-    local rotationSpells = C_AssistedCombat.GetRotationSpells()
-    if rotationSpells and #rotationSpells > 0 then
+    local rotOk, rotationSpells = pcall(function() return C_AssistedCombat.GetRotationSpells() end)
+    if rotOk and rotationSpells and #rotationSpells > 0 then
       for _, spellId in ipairs(rotationSpells) do
           -- Only add if not already in the list
           local alreadyAdded = false
@@ -59,6 +81,11 @@ function BlizzardAPI.GetSpellInfo(spellId)
 end
 
 function BlizzardAPI.GetSpellName(spellId)
+  -- C_Spell.GetSpellName was added in 11.2.7; fall back to GetSpellInfo().name.
+  if C_Spell and C_Spell.GetSpellName then
+    local name = C_Spell.GetSpellName(spellId)
+    if name then return name end
+  end
   local spellInfo = BlizzardAPI.GetSpellInfo(spellId)
   if spellInfo and spellInfo.name then
     return spellInfo.name
@@ -79,6 +106,11 @@ function BlizzardAPI.IsSpellOnCooldown(spellId)
 
   local cooldownInfo = C_Spell.GetSpellCooldown(spellId)
   if not cooldownInfo then
+    return true
+  end
+
+  -- enable == 0 means the spell is on cooldown (added in 12.0.0).
+  if cooldownInfo.enable == 0 then
     return true
   end
 
@@ -116,12 +148,16 @@ function BlizzardAPI.GetAvailableSpells()
     local offset, numSlots = skillLineInfo.itemIndexOffset, skillLineInfo.numSpellBookItems
     for j = offset + 1, offset + numSlots do
       local spellBookItemInfo = C_SpellBook.GetSpellBookItemInfo(j, Enum.SpellBookSpellBank.Player)
-      local spellType, actionId, id, passive, isOffSpec = spellBookItemInfo.itemType, spellBookItemInfo.actionID, spellBookItemInfo.spellID,  spellBookItemInfo.isPassive, spellBookItemInfo.isOffSpec
+      -- Normalize fields that may differ between API versions.
+      local spellType = spellBookItemInfo.itemType
+      local id = spellBookItemInfo.spellID or spellBookItemInfo.actionID
+      local passive = spellBookItemInfo.isPassive
+      local isOffSpec = spellBookItemInfo.isOffSpec or false
 
         -- Only process and print spells
         if spellType == Enum.SpellBookItemType.Spell and not passive and not isOffSpec then
           if not blacklist[id] then
-            local spellName = C_Spell.GetSpellName(id)
+            local spellName = BlizzardAPI.GetSpellName(id)
             spells[id] = spellName
           end
       end

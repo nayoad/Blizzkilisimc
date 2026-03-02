@@ -60,8 +60,8 @@ function ActionBarScanner:ScanActionBars()
 
             if button then
                 local slot = (button.action) or 0
-                if HasAction(slot) then
-                    local actionType, id = GetActionInfo(slot)
+                if BlizzardAPI._HasAction(slot) then
+                    local actionType, id = BlizzardAPI._GetActionInfo(slot)
                     -- Only consider spells and macros (which can contain spells)
                     if id  and (actionType == "spell"  or actionType == "macro") then
                         -- Get spell name
