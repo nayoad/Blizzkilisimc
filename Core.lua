@@ -49,6 +49,7 @@ function Blizzkili:OnEnable()
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OutOfCombat")
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "InCombat")
     self:RegisterEvent("UNIT_AURA", "OnUnitAura")
+    self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", "OnSpellCastSucceeded")
 end
 
 -- Handle player login
@@ -63,6 +64,13 @@ function Blizzkili:OnUnitAura(unit)
     -- if unit == "player" then
     --     self:UpdateRotation()
     -- end
+end
+
+-- Update rotation immediately when the player successfully casts a spell
+function Blizzkili:OnSpellCastSucceeded(event, unit)
+    if unit == "player" then
+        self:UpdateRotation()
+    end
 end
 
 -- PlayerEnteringWorld event handler
