@@ -13,6 +13,7 @@ local ActionBarScanner = LibStub("Blizzkili-ActionBarScanner")
 local ButtonLib = LibStub("Blizzkili-ButtonLib")
 local Options = LibStub("Blizzkili-Options")
 local Rotation = LibStub("Blizzkili-Rotation")
+local SimCPriorities = LibStub("Blizzkili-SimCPriorities")
 local Debug = LibStub("Blizzkili-Debug")
 local error = function(msg) Debug.Error(Blizzkili.db.profile, msg) end
 local info = function(msg) Debug.Info(Blizzkili.db.profile, msg) end
@@ -177,6 +178,8 @@ function Blizzkili:SlashCommand(input)
         self.db.profile.lockFrames = false
         self:UpdateFrameLock()
         info("Blizzkili frames unlocked")
+    elseif input == "simcdebug" then
+        self:SimCDebug()
     else
         -- Open configuration panel
         if AceConfigDialog and AceConfigDialog.OpenFrames["Blizzkili"] then
@@ -185,4 +188,105 @@ function Blizzkili:SlashCommand(input)
             AceConfigDialog:Open("Blizzkili")
         end
     end
+end
+
+-- Print SimC priority debug information to chat
+function Blizzkili:SimCDebug()
+    local PREFIX = "|cff00ccff[BK SimC Debug]|r "
+    local SEP = "──────────────────────────"
+
+    DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. SEP)
+
+    -- Determine spec key
+    local specIndex = GetSpecialization()
+    local specName = specIndex and select(2, GetSpecializationInfo(specIndex))
+    local _, _, classToken = UnitClass("player")
+    local specKey = (classToken and specName) and (classToken .. "_" .. specName) or "Unknown"
+    DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "Spec key: " .. specKey)
+
+    -- SimC priority list
+    local priorityList = SimCPriorities.GetCurrentPriority()
+    if priorityList and #priorityList > 0 then
+        DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "|cff00ff00SimC priority list: FOUND (" .. #priorityList .. " spells)|r")
+        for i, name in ipairs(priorityList) do
+            DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "  #" .. i .. "  |cffffff00" .. name .. "|r")
+        end
+    else
+        DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "|cffff4444SimC priority list: NOT FOUND for key \"" .. specKey .. "\"|r")
+        DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "Falling back to Blizzard order.")
+    end
+
+    -- Raw Blizzard pool
+    local ok, available = pcall(function() return C_AssistedCombat and C_AssistedCombat.IsAvailable() end)
+    if not (ok and available) then
+        DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "|cffff4444C_AssistedCombat not available for this spec/zone.|r")
+        DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. SEP)
+        return
+    end
+
+    local rawPool = BlizzardAPI.GetAssistedCombatRotation()
+    if not rawPool or #rawPool == 0 then
+        DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "|cffff4444C_AssistedCombat not available for this spec/zone.|r")
+        DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. SEP)
+        return
+    end
+
+    DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "Blizzard pool (raw from C_AssistedCombat):")
+    for i, spellId in ipairs(rawPool) do
+        local name = BlizzardAPI.GetSpellName(spellId) or tostring(spellId)
+        DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "  [" .. i .. "] |cffffff00" .. name .. "|r (id: " .. spellId .. ")")
+    end
+
+    -- Build priority map and sort
+    local sorted = {}
+    for _, id in ipairs(rawPool) do table.insert(sorted, id) end
+    if priorityList and #priorityList > 0 then
+        local priorityMap = {}
+        for i, name in ipairs(priorityList) do
+            priorityMap[name:lower()] = i
+        end
+        local known = {}
+        local unknown = {}
+        for _, spellId in ipairs(rawPool) do
+            local name = BlizzardAPI.GetSpellName(spellId)
+            local prio = name and priorityMap[name:lower()]
+            if prio then
+                table.insert(known, { id = spellId, prio = prio })
+            else
+                table.insert(unknown, spellId)
+            end
+        end
+        table.sort(known, function(a, b) return a.prio < b.prio end)
+        sorted = {}
+        for _, entry in ipairs(known) do table.insert(sorted, entry.id) end
+        for _, id in ipairs(unknown) do table.insert(sorted, id) end
+
+        DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "After SimC sort:")
+        for i, spellId in ipairs(sorted) do
+            local name = BlizzardAPI.GetSpellName(spellId) or tostring(spellId)
+            local prio = (name and priorityMap[name:lower()]) or "?"
+            DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "  [" .. i .. "] |cffffff00" .. name .. "|r (id: " .. spellId .. ")  ← SimC prio: " .. tostring(prio))
+        end
+    end
+
+    -- Determine if order changed
+    local orderChanged = false
+    if #sorted == #rawPool then
+        for i = 1, #sorted do
+            if sorted[i] ~= rawPool[i] then
+                orderChanged = true
+                break
+            end
+        end
+    else
+        orderChanged = true
+    end
+
+    if #rawPool > 1 and orderChanged then
+        DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "|cff00ff00Order changed: YES  ✓|r")
+    else
+        DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. "|cffff4444Order changed: NO (Blizzard and SimC agree, or pool too small)|r")
+    end
+
+    DEFAULT_CHAT_FRAME:AddMessage(PREFIX .. SEP)
 end
